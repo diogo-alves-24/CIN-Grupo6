@@ -4,4 +4,6 @@ def calcular_metricas(simulacao):
         'transportados': sum(a.transporta_recurso for a in simulacao.agentes),
         'disponiveis': sum(r.disponivel for r in simulacao.recursos),
         'energia': sum(a.energia for a in simulacao.agentes),
+        'exploradores': sum(a.papel == 'EXPLORADOR' for a in simulacao.agentes),
+        'recolhedores': sum(a.papel == 'RECOLHEDOR' for a in simulacao.agentes),
     }

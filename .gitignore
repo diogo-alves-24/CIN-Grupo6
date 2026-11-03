@@ -1,2 +1,6 @@
 __pycache__/
 *.py[cod]
+.venv/
+.DS_Store
+melhor_genoma.npz
+historico_treino.json

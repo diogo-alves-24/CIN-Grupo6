@@ -1,3 +1,4 @@
+import numpy as np
 import math
 import pygame
 from simulacao.configuracao import (LARGURA, ALTURA, COR_FUNDO, BRANCO,
@@ -11,22 +12,22 @@ def desenhar(ecra, sim, fonte, fonte_pequena):
         pygame.draw.line(ecra, (27,35,47), (x,0), (x,ALTURA))
     for y in range(0, ALTURA, 50):
         pygame.draw.line(ecra, (27,35,47), (0,y), (LARGURA,y))
-    if sim.mostrar_feromonas and sim.modo == 'Combinado':
+    if sim.mostrar_feromonas and sim.modo != 'Aleatório':
+        # Cores mais intensas com escala não linear: até rastos fracos são visíveis.
+        # A visualização não altera os valores usados pelos sensores dos agentes.
         camada = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
         tipos = (('casa', (35, 153, 255)), ('comida', (255, 165, 35)))
         for nome, cor in tipos:
             if sim.tipo_feromona not in ('ambas', nome):
                 continue
             grelha = getattr(sim.feromonas, nome)
-            for y, linha in enumerate(grelha):
-                for x, valor in enumerate(linha):
-                    if valor < 0.008:
-                        continue
-                    intensidade = min(1.0, (valor / 2.8) ** 0.48)
-                    transparencia = min(215, int(28 + 185 * intensidade))
-                    pygame.draw.rect(camada, (*cor, transparencia),
-                                     (x * TAMANHO_CELULA, y * TAMANHO_CELULA,
-                                      TAMANHO_CELULA, TAMANHO_CELULA))
+            for y, x in np.argwhere(grelha >= 0.008):
+                valor = float(grelha[y, x])
+                intensidade = min(1.0, (valor / 2.8) ** 0.48)
+                transparencia = min(215, int(28 + 185 * intensidade))
+                pygame.draw.rect(camada, (*cor, transparencia),
+                                 (int(x) * TAMANHO_CELULA, int(y) * TAMANHO_CELULA,
+                                  TAMANHO_CELULA, TAMANHO_CELULA))
         ecra.blit(camada, (0, 0))
     pygame.draw.circle(ecra, (33,98,74), POSICAO_NINHO, RAIO_NINHO)
     pygame.draw.circle(ecra, (108,228,164), POSICAO_NINHO, RAIO_NINHO, 3)
@@ -49,12 +50,12 @@ def desenhar(ecra, sim, fonte, fonte_pequena):
         pygame.draw.line(ecra, BRANCO, posicao, (int(frente.x),int(frente.y)), 2)
     m = calcular_metricas(sim)
     linhas = [
-        f'FORRAGEAMENTO | {sim.modo.upper()}',
+        f'FORRAGEAMENTO | {sim.modo.upper()} | {sim.velocidade_simulacao}x',
         f'Tempo: {sim.tempo_decorrido:6.1f}s  Agentes: {len(sim.agentes)}  Exploradores: {m["exploradores"]}  Recolhedores: {m["recolhedores"]}',
         f'Entregues: {m["entregues"]}  Transportados: {m["transportados"]}  Disponíveis: {m["disponiveis"]}',
         f'Energia acumulada (unid. simuladas): {m["energia"]:.0f}',
-        '1: Random Walk  2: Combinado  |  R: reiniciar  H: esconder painel',
-        'ESPAÇO: pausa  S: sensores  F: rastos  T: ambos/comida/casa  ESC: sair',
+        'P: velocidade  R: reiniciar  M: menu  H: painel',
+        'ESPAÇO: pausa  S: sensores  F: rastos  T: tipo de rasto  ESC: sair',
     ]
     if sim.mostrar_painel:
         painel = pygame.Surface((1045, 169), pygame.SRCALPHA)
@@ -66,3 +67,24 @@ def desenhar(ecra, sim, fonte, fonte_pequena):
     if sim.em_pausa:
         pausa = fonte.render('PAUSA', True, (255,196,90))
         ecra.blit(pausa, pausa.get_rect(center=(LARGURA//2,195)))
+
+
+def desenhar_resultado(ecra, simulacao):
+    if not simulacao.terminada:
+        return
+    camada = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
+    camada.fill((7, 12, 20, 225))
+    ecra.blit(camada, (0, 0))
+    fonte = pygame.font.SysFont('arial', 34, bold=True)
+    normal = pygame.font.SysFont('arial', 25)
+    tempo = simulacao.tempo_final
+    linhas = [
+        ('SIMULAÇÃO CONCLUÍDA!', fonte),
+        (f'Tempo: {int(tempo//60):02d}:{tempo%60:05.2f}', normal),
+        (f'Modo: {simulacao.modo}', normal),
+        (f'Recursos entregues: {sum(a.entregas for a in simulacao.agentes)}/{len(simulacao.recursos)}', normal),
+        ('R: reiniciar  M: menu  ESC: sair', normal),
+    ]
+    for i, (linha, tipo) in enumerate(linhas):
+        imagem = tipo.render(linha, True, BRANCO)
+        ecra.blit(imagem, imagem.get_rect(center=(LARGURA//2, 245+i*65)))

@@ -13,8 +13,19 @@ COR_FUNDO = (18, 24, 34)
 BRANCO = (237, 240, 246)
 POSICAO_NINHO = pygame.Vector2(LARGURA / 2, ALTURA / 2)
 TAMANHO_CELULA = 12
-EVAPORACAO = 0.13  # segundo^-1
-DIFUSAO = 0.12  # intensidade de mistura com células adjacentes / segundo
+EVAPORACAO_CASA = 0.05  # segundo^-1
+EVAPORACAO_COMIDA = 0.13  # segundo^-1
+DIFUSAO_CASA = 0.08  # intensidade de mistura com células adjacentes / segundo
+DIFUSAO_COMIDA = 0.20 
 DEPOSITO_CASA = 0.85
 DEPOSITO_COMIDA = 1.3
 MAX_FEROMONA = 12.0
+
+# Modelo energético da simulação (unidades artificiais)
+# A mesma distância percorrida a maior velocidade custa mais energia.
+CUSTO_ENERGIA_DISTANCIA = 0.018
+PENALIZACAO_VELOCIDADE = 0.80
+CUSTO_ENERGIA_TEMPO = 0.025
+
+# Memória recente de movimento usada apenas pelo controlador neuronal
+JANELA_MEMORIA = 5.0  # segundos simulados

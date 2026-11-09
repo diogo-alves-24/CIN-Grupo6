@@ -57,9 +57,10 @@ class Agente:
         self._em_borda = False
         self.tempos_transporte = []   # duração de cada transporte (recolha -> entrega)
         self.instante_recolha = 0.0
+        self.distancia_recolha_ninho = 0.0  # somente para o avaliador, não para a rede
 
-    def atualizar(self, delta_tempo, agentes, recursos, obstaculos, feromonas):
-        self.observacao = observar(self, agentes, recursos, obstaculos,
+    def atualizar(self, delta_tempo, recursos, obstaculos, feromonas):
+        self.observacao = observar(self, recursos, obstaculos,
                                   feromonas if self.modo != 'Aleatório' else None)
         obs = self.observacao
         if self.modo != 'Aleatório' and not self.transporta_recurso:
@@ -77,10 +78,12 @@ class Agente:
             if self.tempo_verificacao >= 3.0:
                 progresso = self.posicao.distance_to(self.posicao_referencia)
                 self.progresso_local = min(1.0, progresso / 110.0)
-                if progresso < 38:
+                # Bloqueio: pouco deslocamento líquido ou órbita persistente.
+                em_ciclo = self.indice_ciclo > 0.78 and self.progresso_recente < 0.22
+                if progresso < 38 or em_ciclo:
                     self.tempo_bloqueado += self.tempo_verificacao
                     self.bloqueios += 1
-                if progresso < 38 and self.tempo_fuga <= 0:
+                if (progresso < 38 or em_ciclo) and self.tempo_fuga <= 0:
                     # Fuga local de uma órbita/engarrafamento, sem teletransporte.
                     angulo = self.orientacao + random.choice((-1, 1)) * random.uniform(.9, 2.2)
                     self.direcao_fuga = pygame.Vector2(math.cos(angulo), math.sin(angulo))
@@ -171,7 +174,8 @@ class Agente:
             self.tempo_desde_ninho = 0.0
             self.papel = 'EXPLORADOR'
         if self.modo != 'Aleatório' and self.tempo_deposito >= .15:
-            if self.transporta_recurso:
+            if self.transporta_recurso and self.tempo_fuga <= 0:
+                # Não reforçar trilhos enquanto tenta escapar a um ciclo.
                 quantidade = DEPOSITO_COMIDA * max(.18, 1 - self.tempo_desde_recurso / 8)
                 feromonas.depositar('comida', self.posicao, quantidade)
             elif self.papel == 'EXPLORADOR' and self.pode_depositar_casa:
@@ -188,6 +192,7 @@ class Agente:
                     self.tempo_desde_recurso = 0.0
                     self.tempo_com_recurso = 0.0
                     self.instante_recolha = self.relogio
+                    self.distancia_recolha_ninho = self.posicao.distance_to(POSICAO_NINHO)
                     break
         elif self.posicao.distance_squared_to(POSICAO_NINHO) <= (RAIO_NINHO + RAIO_AGENTE)**2:
             self.transporta_recurso = False

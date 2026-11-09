@@ -50,11 +50,11 @@ def desenhar(ecra, sim, fonte, fonte_pequena):
         pygame.draw.line(ecra, BRANCO, posicao, (int(frente.x),int(frente.y)), 2)
     m = calcular_metricas(sim)
     linhas = [
-        f'FORRAGEAMENTO | {sim.modo.upper()} | {sim.velocidade_simulacao}x',
+        f'FORRAGEAMENTO | {sim.modo.upper()} | cenário {sim.cenario} | {sim.velocidade_simulacao}x',
         f'Tempo: {sim.tempo_decorrido:6.1f}s  Agentes: {len(sim.agentes)}  Exploradores: {m["exploradores"]}  Recolhedores: {m["recolhedores"]}',
         f'Entregues: {m["entregues"]}  Transportados: {m["transportados"]}  Disponíveis: {m["disponiveis"]}',
         f'Energia acumulada (unid. simuladas): {m["energia"]:.0f}',
-        'P: velocidade  R: reiniciar  M: menu  H: painel',
+        'P: velocidade  R: reiniciar  C: cenário  M: menu  H: painel',
         'ESPAÇO: pausa  S: sensores  F: rastos  T: tipo de rasto  ESC: sair',
     ]
     if sim.mostrar_painel:

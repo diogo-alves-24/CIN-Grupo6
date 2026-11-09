@@ -1,4 +1,4 @@
-"""Dois controladores: passeio aleatório e inteligência de enxame combinada."""
+"""Passeio aleatório, feromonas e controlador neuronal híbrido, sem Boids."""
 import math
 import random
 import pygame
@@ -45,14 +45,10 @@ class ControladorEnxame:
                 # Sem pista: explorar até recuperar um trilho de casa.
                 vetor = base * 1.5
             vetor += normalizar(obs.direcao_obstaculo) * (7 if obs.distancia_obstaculo < 45 else .5)
-            vetor += normalizar(obs.separacao) * .8
             return normalizar(vetor) if vetor.length_squared() > .001 else base
 
         vetor = base * 0.9
         vetor += normalizar(obs.direcao_obstaculo) * (5 if obs.distancia_obstaculo < 42 else .8)
-        vetor += normalizar(obs.separacao) * 2.7
-        vetor += normalizar(obs.alinhamento) * .4
-        vetor += normalizar(obs.coesao) * .12
         if obs.recursos:
             vetor += obs.direcao_recurso * 5
         else:
@@ -61,12 +57,12 @@ class ControladorEnxame:
 
 
 class ControladorNeuronal:
-    """Controlador híbrido com duas MLP: procura e regresso.
+    """Controlador híbrido com rede NEAT (6 saídas: procura e regresso).
 
     Entradas e correções de direção no referencial do próprio agente.
     O genoma neutro (todos zeros) reproduz o Combinado, incluindo a velocidade.
-    As duas redes recebem os mesmos sinais locais, mas são treinadas com pesos
-    independentes para as duas tarefas.
+    A rede recebe sempre os mesmos sinais locais; as saídas 0-2 comandam a
+    procura e as 3-5 o regresso (ver rede_neuronal.py).
     """
     GANHO = 1.5
 
@@ -88,7 +84,8 @@ class ControladorNeuronal:
         ninho = o.direcao_ninho if o.ninho_visivel else pygame.Vector2()
         dados = []
         for v in (referencia, o.direcao_casa, o.direcao_comida, o.direcao_recurso,
-                  afastamento, normalizar(o.separacao), ninho):
+                  afastamento, ninho,
+                  agente.direcao_fuga if agente.tempo_fuga > 0 else pygame.Vector2()):
             dados.extend(ego(v))
         dados.extend((
             float(agente.transporta_recurso),
@@ -98,7 +95,7 @@ class ControladorNeuronal:
             agente.progresso_local,
             min(1.0, agente.tempo_sem_recursos / 12.0),
             min(1.0, o.distancia_obstaculo / ALCANCE_SENSORES),
-            min(1.0, o.vizinhos / 6.0),
+            o.contraste_comida_lateral,
             float(o.ninho_visivel),
             min(1.0, o.recursos / 4.0),
             # Memória LOCAL: sem localização do ninho nem mapa global.

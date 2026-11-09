@@ -1,12 +1,11 @@
 """Menu simples e execução visual de três controladores."""
 from pathlib import Path
-import numpy as np
 import pygame
 from simulacao.configuracao import LARGURA, ALTURA, FPS
-from simulacao.mundo import Simulacao
+from simulacao.mundo import Simulacao, CENARIOS
 from simulacao.desenho import desenhar, desenhar_resultado
 from simulacao.controladores import MODOS
-from simulacao.rede_neuronal import TAMANHO_GENOMA
+from simulacao.rede_neuronal import carregar_genoma
 
 # Passo FIXO igual ao do treino/benchmark (0,05 s): o que se vê no vídeo é
 # exatamente a dinâmica em que a rede foi treinada e avaliada.
@@ -15,17 +14,17 @@ PASSO_SIMULACAO = 0.05
 FICHEIRO_GENOMA = Path(__file__).resolve().parent.parent / 'melhor_genoma.npz'
 
 
-def criar_simulacao(indice):
+def criar_simulacao(indice, cenario='agrupado'):
     modo = MODOS[indice]
     if modo == 'Neuroevolução':
         if not FICHEIRO_GENOMA.exists():
             return None
-        with np.load(FICHEIRO_GENOMA, allow_pickle=False) as dados:
-            genoma = dados['genoma'].copy()
-        if genoma.size != TAMANHO_GENOMA:   # pesos de uma arquitetura antiga
+        try:
+            genoma = carregar_genoma(FICHEIRO_GENOMA)
+        except ValueError:
             return None
-        return Simulacao(modo, genoma=genoma)
-    return Simulacao(modo)
+        return Simulacao(modo, genoma=genoma, cenario=cenario)
+    return Simulacao(modo, cenario=cenario)
 
 
 def executar():
@@ -65,6 +64,7 @@ def executar():
                         mensagem = 'Sem genoma válido: corre python treinar.py'
                     else:
                         estado = 'SIMULACAO'
+                        acumulador = 0.0
                         mensagem = ''
             elif evento.type == pygame.KEYDOWN:
                 if evento.key == pygame.K_ESCAPE:
@@ -73,11 +73,20 @@ def executar():
                     estado = 'MENU'
                     simulacao = None
                 elif evento.key == pygame.K_r:
-                    novo = criar_simulacao(MODOS.index(simulacao.modo))
+                    novo = criar_simulacao(MODOS.index(simulacao.modo), simulacao.cenario)
                     for nome in ('mostrar_painel', 'mostrar_feromonas', 'tipo_feromona',
                                  'mostrar_sensores', 'velocidade_simulacao'):
                         setattr(novo, nome, getattr(simulacao, nome))
                     simulacao = novo
+                    acumulador = 0.0
+                elif evento.key == pygame.K_c:
+                    indice_cenario = (CENARIOS.index(simulacao.cenario) + 1) % len(CENARIOS)
+                    novo = criar_simulacao(MODOS.index(simulacao.modo), CENARIOS[indice_cenario])
+                    for nome in ('mostrar_painel', 'mostrar_feromonas', 'tipo_feromona',
+                                 'mostrar_sensores', 'velocidade_simulacao'):
+                        setattr(novo, nome, getattr(simulacao, nome))
+                    simulacao = novo
+                    acumulador = 0.0
                 elif evento.key == pygame.K_SPACE:
                     simulacao.em_pausa = not simulacao.em_pausa
                 elif evento.key == pygame.K_h:

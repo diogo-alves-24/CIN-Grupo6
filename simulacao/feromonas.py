@@ -131,48 +131,24 @@ class GrelhaFeromonas:
 
     def atualizar(self, delta_tempo):
         self.tempo_atualizacao += delta_tempo
-
-        if self.tempo_atualizacao < 0.18:
-            return
-
+        if self.tempo_atualizacao < 0.18: return
         delta = self.tempo_atualizacao
         self.tempo_atualizacao = 0.0
-
         for nome in ('casa', 'comida'):
-
-            # Evaporação e difusão específicas de cada feromona
-            if nome == 'casa':
-                taxa = EVAPORACAO_CASA
-                difusao = DIFUSAO_CASA
-            else:
-                taxa = EVAPORACAO_COMIDA
-                difusao = DIFUSAO_COMIDA
-
+            taxa = EVAPORACAO_CASA if nome == 'casa' else EVAPORACAO_COMIDA
+            difusao = DIFUSAO_CASA if nome == 'casa' else DIFUSAO_COMIDA
             fator = math.exp(-taxa * delta)
             mistura = min(0.2, difusao * delta)
-
-            # Grelha da feromona correspondente
-            g = getattr(self, nome)
-
-            # Evaporação
+            g = getattr(self, nome)          # vista interior (escrita in-place)
             v = np.where(g >= 0.0005, g * fator, 0.0)
-
-            # Difusão para as células vizinhas
             nova = v * (1 - mistura)
             q = v * mistura / self._vizinhos
-
             nova[1:, :] += q[:-1, :]
             nova[:-1, :] += q[1:, :]
             nova[:, 1:] += q[:, :-1]
             nova[:, :-1] += q[:, 1:]
-
-            # Atualizar a grelha
             g[...] = nova
-
             if nome == 'casa':
-                # Apagar direções quando as feromonas desaparecem
-                vet = self._vet_casa[
-                    _MARGEM:-_MARGEM,
-                    _MARGEM:-_MARGEM
-                ]
+                # Apagar as direções quando as respetivas feromonas desaparecem.
+                vet = self._vet_casa[_MARGEM:-_MARGEM, _MARGEM:-_MARGEM]
                 vet[nova < 0.04] = 0.0

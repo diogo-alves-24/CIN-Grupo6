@@ -1,100 +1,131 @@
-# Forrageamento Espacial — Neuroevolução (duas MLP)
+# Forrageamento Espacial — Neuroevolução NEAT (sem Boids)
 
-Projeto em **Python + Pygame** com agentes autónomos que procuram recursos e os entregam no ninho. Mantém três estratégias para comparação: **Random Walk**, **Combinado** (feromonas + Boids) e **Neuroevolução** (Algoritmo Genético que evolui duas MLP).
+Simulador de formigas em **Python + Pygame + NumPy**. Mantém três modos:
 
-## Instalar e executar
+- **Aleatório:** Random Walk, sem coordenação.
+- **Combinado:** procura e regresso com feromonas, sensores locais e fuga de ciclos. **Não usa Boids.** O nome é mantido para facilitar a comparação com as versões anteriores.
+- **Neuroevolução:** uma rede neuronal evoluída por **NEAT** (topologia e pesos), com 6 saídas — 3 para a procura e 3 para o regresso — que ajustam direção e velocidade do controlador Combinado. Substitui as duas MLP fixas 28–10–3 da versão anterior.
+
+## Instalação
 
 ```bash
-conda activate forrageamento  # ou o teu ambiente Conda com pygame e numpy
 python -m pip install -r requirements.txt
 python main.py
 ```
 
-Seleciona o modo no menu. O modo Neuroevolução exige `melhor_genoma.npz` **treinado nesta versão**.
+Modo Neuroevolução só aparece operacional depois de executar `python treinar.py` nesta versão. Os genomas das versões anteriores (MLP) são **incompatíveis** com o formato NEAT e são recusados com mensagem clara.
 
-Controlos: `P` (1x → 2x → 4x → 8x), `T` (tipo de feromona), `F` (rastos), `H` (painel), `S` (sensores), `Espaço` (pausa), `R` (reiniciar), `M` (menu), `ESC` (sair).
+**Controlos:** `1/2/3` selecionam o modo; `P` velocidade (1x, 2x, 4x, 8x), `T` tipo de feromona, `F` visibilidade das feromonas, `S` sensores, `H` painel, `Espaço` pausa, `R` reinicia, `C` alterna cenário e reinicia, `M` menu, `ESC` sai.
 
-## Duas redes neuronais especializadas
+## Neuroevolução com NEAT
 
-Em `simulacao/rede_neuronal.py` existem **duas redes separadas**, ambas com topologia **28–10–3**:
+Implementação própria em NumPy (`simulacao/neat.py`), sem dependências novas.
 
-- **Procura**: usada enquanto a formiga não transporta recurso.
-- **Regresso**: usada depois de recolher um recurso até o entregar.
+| Componente | Decisão |
+| --- | --- |
+| Genoma | viéses dos nós + conexões com **número de inovação**; só redes *feedforward* (a memória já entra como sinais locais) |
+| Rede | 28 entradas locais, 6 saídas `tanh`: 0–2 usadas sem recurso, 3–5 com recurso (lateral, frontal, velocidade); nós ocultos criados pela evolução |
+| Topologia inicial | mínima: entradas ligadas às saídas (168 pesos + 6 viéses). Indivíduo 0 = genoma neutro (tudo a zero = Combinado) |
+| Mutação | pesos/viéses (gaussiana, em dois níveis, escalada pela mutação adaptativa), **adicionar conexão** (sem ciclos), **adicionar nó** (divide uma conexão), ativar/desativar |
+| Cruzamento | alinhado por inovação; o filho herda a topologia do progenitor mais apto |
+| Especiação | distância δ = c₁·E + c₂·D + c₃·W̄; o **limiar adapta-se** para manter `--especies-alvo` espécies; *fitness sharing* |
+| Seleção | elitismo global (2), campeão de espécies com ≥ 5 membros, sobrevivência de 30 %, extinção por estagnação (protege as 2 melhores espécies) |
 
-O mesmo genoma codifica as duas redes, mas cada uma tem **pesos próprios**. O total é **646 parâmetros** (323 por rede). Ambas recebem 24 entradas locais da versão anterior e 4 sinais de memória do próprio agente:
+Mantêm-se: fitness multiobjetivo, avaliação robusta (80 % média + 20 % pior quartil), sonda de treino para a mutação adaptativa, validação independente, currículo e paralelismo. Deixou de haver imigrantes aleatórios: a diversidade vem da especiação.
 
-1. Tempo desde a recolha (normalizado).
-2. Índice de circularidade do percurso recente (0 = quase retilíneo; 1 = muitas voltas).
-3. Rotação assinada acumulada na janela recente.
-4. Progresso líquido normalizado na mesma janela.
+Parâmetros novos de `treinar.py`: `--p-nova-ligacao`, `--p-novo-no`, `--especies-alvo`, `--estagnacao`, `--ligacao-inicial`. `historico_treino.json` regista agora espécies, limiar de compatibilidade e complexidade (nós/conexões) da elite e média da população.
 
-A janela é de **5 segundos simulados** (`JANELA_MEMORIA`). A memória é formada por **deslocamentos próprios acumulados**, sem acesso às coordenadas globais do ninho/recursos.
+## Alterações da versão v8
 
-As três saídas de cada MLP continuam a ser: correção lateral, correção frontal e **comando de velocidade**. **Não** foi adicionada uma quarta saída. A rede é híbrida: ajusta a direção do Combinado e o genoma todo a zero reproduz exatamente o Combinado.
+### 1. Boids retirados completamente
 
-### Velocidade e energia
+Removidos os cálculos de **separação, alinhamento e coesão**, tanto do controlador Combinado como dos sensores e da entrada neuronal. A interação descentralizada assenta agora em **feromonas**. Continua a existir desvio local de obstáculos, que não é flocking/Boids.
 
-A saída de velocidade está em [-1, 1]. A velocidade própria inicial de cada agente é usada no comando neutro. Um comando positivo aumenta-a suavemente até `VELOCIDADE_MAXIMA`; um comando negativo reduz até 20% da velocidade própria, sem atingir valores inferiores a zero.
+As entradas da rede continuam a ser 28 sinais locais: as posições usadas para sinais de Boids foram substituídas por **direção de fuga** e **contraste da feromona de comida entre esquerda e direita**. Os sinais de memória da trajetória são locais; não fornecem a posição global do ninho ou recursos. A visualização/avaliador conhecem o mapa, mas a rede não.
 
-O gasto energético é artificial e serve apenas para comparar comportamentos:
+### 2. Quatro cenários reproduzíveis
 
+| Cenário | Características |
+| --- | --- |
+| `proximo` | Comida relativamente próxima do ninho; sem obstáculos |
+| `agrupado` | Mapa original, com quatro aglomerados e cinco obstáculos |
+| `disperso` | Recursos espalhados pela arena; cinco obstáculos |
+| `distante` | Recursos próximos dos quatro cantos; seis obstáculos |
+
+`variado` escolhe o cenário por `semente % 4` na ordem `proximo`, `agrupado`, `disperso`, `distante`. Isto **não** é uma decisão de um agente: é preparação do cenário pelo avaliador, antes de cada simulação. Todos os candidatos são avaliados nas mesmas sementes e condições.
+
+Na interface o cenário inicial é `agrupado`. Usa `C` para alternar durante a demonstração. No treino e no benchmark, o padrão é `variado`.
+
+### 3. Fitness com tempo de conclusão, energia e progresso real
+
+Para cada cenário:
+
+```text
+fitness = 1000 * entregas
+        + 350 * rapidez_das_entregas
+        + 150 * conclusao_rapida
+        +  35 * progresso_regresso
+        +  80 * cobertura
+        - 120 * energia_normalizada
+        -  70 * colisoes_normalizadas
+        -  50 * tempo_bloqueado_normalizado
 ```
-energia += distancia * CUSTO_ENERGIA_DISTANCIA
-           * (1 + PENALIZACAO_VELOCIDADE * (velocidade / VELOCIDADE_MAXIMA)**2)
-           + CUSTO_ENERGIA_TEMPO * delta_tempo
-```
 
-Assim, para uma mesma distância, velocidades mais elevadas consomem mais energia. Também existe um custo basal por tempo, para não beneficiar indefinidamente ficar parado. As constantes ajustáveis encontram-se em `simulacao/configuracao.py`. Não se trata de um modelo físico calibrado de um robô real.
+- **Entregas:** recursos efetivamente entregues (0–36).
+- **Rapidez:** soma normalizada de `(1 - instante_entrega/duracao)`. Recompensa entregas antecipadas, mesmo que faltem outras.
+- **Conclusão rápida:** só se foram entregues **todos** os recursos, recebe `(1 - t100/duracao)`. Diferencia explicitamente o tempo para terminar tudo.
+- **Progresso de regresso:** apenas para formigas que estão **a carregar comida no final**. Compara distância ao ninho no momento da recolha com a distância final, normalizada. Recompensa final, **não** incrementos positivos a cada passo, para não explorar ciclos de aproximação/afastamento. Esta distância global é calculada **só pelo avaliador**; a rede não a recebe.
+- **Cobertura:** fração de regiões diferentes visitadas pelo enxame; uma região conta apenas uma vez.
+- **Energia:** custo por distância percorrida e velocidade, mais custo basal por tempo.
+- **Colisões e bloqueios:** penalizam contacto com obstáculos/bordas e períodos de movimento improdutivo.
 
-### Fitness do Algoritmo Genético
+Os termos auxiliares estão em `[0,1]` e os seus pesos absolutos somam **855**, menos de 1000. Assim uma entrega adicional domina qualquer combinação de diferenças nos termos auxiliares da mesma avaliação. Os pesos são experimentais, não garantias de maior desempenho.
 
-Em `simulacao/avaliacao.py`:
+### 4. Deteção de ciclos
 
-```
-fitness = 1000 * entregues
-        + 10 * soma(max(0, 1 - instante_entrega / duracao))
-        - 0.015 * energia
-        - 2.0 * colisoes_obstaculos
-        - 0.05 * contactos_borda
-        - 0.5 * bloqueios
-```
+Mantém a memória de 5 segundos de deslocamento/rotação, e deteta bloqueio por deslocamento líquido reduzido **ou** órbita recente persistente. Ativa fuga local durante um intervalo curto. Enquanto uma formiga com comida está em fuga, **não deposita feromona de comida**, para não reforçar um trilho circular. O sistema não usa teletransporte nem coordenação centralizada.
 
-Prioriza **recursos entregues no ninho**; diferencia controladores que completam a tarefa mais cedo e penaliza energia, colisões e bloqueios. Os pesos são parâmetros iniciais a justificar e testar, não constantes científicas. A fitness é uma **soma ponderada de critérios** (não é otimização de Pareto).
+### 5. Evolução (ver secção NEAT acima)
 
-O AG implementa seleção por torneio, cruzamento uniforme, mutação gaussiana, elitismo e imigrantes aleatórios. Começa perto do genoma neutro, para não perder a referência funcional do Combinado. Treino, validação e teste têm sementes separadas.
+- **Mutação adaptativa:** quando não há melhoria durante `--paciencia-mutacao` gerações numa sonda fixa formada apenas por sementes de treino, aumenta a amplitude até 3x. Não usa a validação para adaptar a mutação.
+- **Avaliação robusta:** 80% da fitness média + 20% da média do pior quartil das sementes.
+- Suporte opcional a **currículo** de mapas (`--curriculo`): `proximo` → `agrupado` → `disperso` → `distante` → `variado`. A validação continua sempre variada e independente.
+- Treino sem Pygame desenhar e possibilidade de vários processos (`--processos`).
 
-## Treinar
-
-Teste rápido de funcionamento (não serve para avaliar qualidade):
+## Testes rápidos
 
 ```bash
-python treinar.py --geracoes 2 --populacao 4 --duracao 60 --sementes 42 123 --validacao 9001 9002 --processos 1
+python testar_fitness.py
+python testar_projeto.py
+python testar_neat.py
+python treinar.py --geracoes 2 --populacao 4 --duracao 30 \
+  --sementes 100 101 102 103 --validacao 9001 9002 --processos 1
 ```
 
-Treino mais exigente:
+Estes testes validam a execução e algumas propriedades do código, **não** demonstram melhoria face ao Combinado.
+
+## Treinar o modelo
+
+Experiência com mapas variados, 180 segundos:
 
 ```bash
-python treinar.py --geracoes 25 --populacao 30 --duracao 300 --sementes 853 1729 4096 7351 --validacao 9001 9002 9003 9004
+python treinar.py --geracoes 30 --populacao 60 --duracao 180 \
+  --sementes 101 102 103 104 105 106 107 108 \
+  --sementes-por-geracao 4 \
+  --validacao 9001 9002 9003 9004 \
+  --processos 4
 ```
 
-A opção `--sementes-por-geracao` (por omissão, 4) controla quantas sementes de treino são utilizadas em cada geração. As mesmas sementes são usadas para todos os indivíduos dessa geração. O modo Combinado é avaliado apenas uma vez nas sementes de validação.
+Para comparar o efeito do currículo, acrescenta `--curriculo`. Se a tarefa com 180 s for demasiado difícil e houver poucas entregas, testa primeiro `--duracao 300`; não assumas que 180 s dá sempre melhor treino. Antes de aumentar para 60 indivíduos, valida o desempenho com 12–30.
 
-Ficheiros criados pelo treino: `melhor_genoma.npz` e `historico_treino.json`.
+São gerados `melhor_genoma.npz` (genoma NEAT, versão `neat_v1`) e `historico_treino.json`.
 
-**Os genomas de versões anteriores (incluindo a v5) não são compatíveis com as duas redes 28–10–3.** Não reutilizar o antigo `melhor_genoma.npz`. Guarda uma cópia com outro nome antes de treinar novamente, se precisares dele.
-
-## Avaliar a generalização
+## Benchmark com sementes nunca usadas
 
 ```bash
-python avaliar.py --duracao 300 --sementes 7001 7002 7003 7004 --processos 1
+python avaliar.py --duracao 180 --sementes 7001 7002 7003 7004 7005 7006 7007 7008 --processos 4
 ```
 
-Ou simplesmente `python avaliar.py` para as 20 sementes de teste predefinidas. Comparar entregas, `t50`, `t100`, energia, colisões, bloqueios e intervalos de confiança. Os controladores devem ser avaliados **nas mesmas sementes e com o mesmo modelo energético**. Não considerar melhores genomas apenas porque a fitness aumenta numa validação muito usada para selecionar modelos.
+O benchmark faz comparações emparelhadas entre Random Walk, Combinado e Neuroevolução, com **as mesmas sementes e cenários**, e produz diferenças e intervalos de confiança bootstrap. Também podes forçar `--cenario agrupado` para medir só o mapa original.
 
-## Requisitos e limitações
-
-- Os exploradores que passaram pelo ninho deixam feromonas de casa. Recolhedores sem recurso (roxos) **não** depositam feromonas; só voltam a depositar feromonas de casa após visitarem o ninho.
-- Os agentes carregados depositam feromonas de comida. Continuam a utilizar feromonas e Boids como base; as redes não obtêm a posição global dos objetivos.
-- O treino é por **Algoritmo Genético**; os pesos não são ajustados por retropropagação durante uma simulação.
-- Ainda falta executar a avaliação experimental completa, incluindo ablação, escalabilidade e robustez, conforme o enunciado do projeto.
-- A sintaxe e testes de integração sem interface gráfica foram verificados; a execução gráfica requer Pygame no computador do utilizador. Não há garantia de que a rede evoluída supere o Combinado antes dos testes independentes.
+**Importante:** compara sempre treino e benchmark com a mesma duração e os mesmos pesos de fitness. Genomas e pontuações de versões anteriores devem ser tratados como experiências separadas. O facto de o código executar corretamente não demonstra que o modelo neuronal já supera o Combinado; são necessários resultados em sementes novas.
